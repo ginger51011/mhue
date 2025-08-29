@@ -113,7 +113,7 @@ class Controller:
     def set_lamp(self, lamp_id: int, on: bool):
         res = req.put(
             f'{self.base_url()}/lights/{lamp_id}/state',
-            json={'on': on, 'transitiontime': 2},
+            json={'on': on, 'transitiontime': 1},
         )
         res.raise_for_status()
         contains_hue_error(res.json(), context='set_lamp')
