@@ -11,7 +11,7 @@ import argparse
 import json
 import os
 from dataclasses import dataclass, asdict
-from typing import Self
+from typing import Self, Literal
 from time import sleep
 import sys
 
@@ -21,17 +21,31 @@ import requests as req
 WPM = 20
 M_UNIT_SECONDS = 60 / (50 * WPM)  # Approx 20 WPM (five-letter word)
 M_DIT = M_UNIT_SECONDS
-M_DAHS = 3 * M_DIT
+M_DASH = 3 * M_DIT
 M_LETTER_SPACE = 3 * M_DIT
 M_SPACE = 7 * M_DIT
 
 M = {
     "A": ".-",
+    "B": "-...",
+    "C": "-.-.",
     # Swedish
     "Å": ".--.-",
     "Ä": ".-.-",
     "Ö": "---.",
 }
+
+
+def translate(msg: str) -> str:
+    msg = msg.upper()
+    words = msg.split()
+    morse_words = []
+    for word in words:
+        morse_word = ""
+        for c in word:
+            morse_word += M.get(c, "")
+        morse_words.append(morse_word)
+    return morse_words
 
 
 @dataclass
@@ -74,6 +88,26 @@ class Controller:
         self.set_lamp(lamp_id, on=True)
         sleep(duration_s)
         self.set_lamp(lamp_id, on=False)
+
+    def blink_morse_word(self, lamp_id: int, morse_word: list[Literal[".", "-"]]):
+        for i, c in enumerate(morse_word):
+            if c == ".":
+                self.blink(lamp_id, M_DIT)
+            elif c == "-":
+                self.blink(lamp_id, M_DASH)
+            # All except last one
+            if i < len(morse_word) - 1:
+                sleep(M_LETTER_SPACE)
+
+    def blink_morse_message(
+        self, lamp_id: int, morse_msg: list[list[Literal[".", "-"]]]
+    ):
+        """Prints a Morse message, divided into words (or special characters)."""
+        for i, word in enumerate(morse_msg):
+            self.blink_morse_word(lamp_id, word)
+            # All except last one
+            if i < len(morse_msg) - 1:
+                sleep(M_SPACE)
 
 
 def contains_hue_error(json: dict, context="unkown") -> bool:
@@ -179,6 +213,15 @@ if __name__ == "__main__":
         help="Path to config file",
         default=default_config_path(),
     )
+    parser.add_argument(
+        "-r",
+        "--repeat",
+        nargs="?",
+        type=int,
+        metavar="N",
+        help="Repeat message N times",
+        default=1,
+    )
 
     args = parser.parse_args()
 
@@ -195,4 +238,8 @@ if __name__ == "__main__":
         sys.exit(0)
 
     if args.text is not None and args.id is not None:
-        c.blink(args.id, M_DIT)
+        for i in range(args.repeat):
+            c.blink_morse_message(args.id, translate(args.text))
+            # All but last time
+            if i < args.repeat - 1:
+                sleep(M_SPACE * 3)
