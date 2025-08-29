@@ -10,29 +10,63 @@ By Emil Jonathan Eriksson <github.com/ginger51011>
 import argparse
 import json
 import os
-from dataclasses import dataclass, asdict
-from typing import Self, Literal
-from time import sleep
 import sys
+from dataclasses import asdict, dataclass
+from time import sleep
+from typing import Literal, Self
 
 import requests as req
 
 # Morse time units
 WPM = 20
 M_UNIT_SECONDS = 60 / (50 * WPM)  # Approx 20 WPM (five-letter word)
-M_DIT = M_UNIT_SECONDS
-M_DASH = 3 * M_DIT
-M_LETTER_SPACE = 3 * M_DIT
-M_SPACE = 7 * M_DIT
+M_DOT = M_UNIT_SECONDS
+M_DASH = 3 * M_DOT
+M_LETTER_SPACE = 3 * M_DOT  # Space between letters in a word
+M_SPACE = 7 * M_DOT
 
 M = {
     "A": ".-",
     "B": "-...",
     "C": "-.-.",
+    "D": "-..",
+    "E": ".",
+    "F": "..-.",
+    "G": "--.",
+    "H": "....",
+    "I": "..",
+    "J": ".---",
+    "K": "-.-",
+    "L": ".-..",
+    "M": "--",
+    "N": "-.",
+    "O": "---",
+    "P": ".--.",
+    "Q": "--.-",
+    "R": ".-.",
+    "S": "...",
+    "T": "-",
+    "U": "..-",
+    "V": "...-",
+    "W": ".--",
+    "X": "-..-",
+    "Y": "-.--",
+    "Z": "--..",
     # Swedish
     "Å": ".--.-",
     "Ä": ".-.-",
     "Ö": "---.",
+    # Numbers
+    "1": ".----",
+    "2": "..---",
+    "3": "...--",
+    "4": "....-",
+    "5": ".....",
+    "6": "-....",
+    "7": "--...",
+    "8": "---..",
+    "9": "----.",
+    "0": "-----",
 }
 
 
@@ -92,7 +126,7 @@ class Controller:
     def blink_morse_word(self, lamp_id: int, morse_word: list[Literal[".", "-"]]):
         for i, c in enumerate(morse_word):
             if c == ".":
-                self.blink(lamp_id, M_DIT)
+                self.blink(lamp_id, M_DOT)
             elif c == "-":
                 self.blink(lamp_id, M_DASH)
             # All except last one
@@ -135,7 +169,7 @@ def handshake(ip: str) -> str | None:
         },
     )
 
-    input("Press the button on your Hue Bridge now; press any key when done")
+    input("Press the button on your Hue Bridge now; press <Enter> when done")
 
     res.raise_for_status()
 
