@@ -2,6 +2,8 @@
 
 """Dependency-free Python script to blink your Philips Hue lamps with Morse code.
 
+Based on <https://www.burgestrand.se/hue-api> (a bit outdated though).
+
 By Emil Jonathan Eriksson <github.com/ginger51011>
 """
 
@@ -9,15 +11,11 @@ import argparse
 import json
 import os
 from dataclasses import dataclass, asdict
+from typing import Self
+from time import sleep
+import sys
 
 import requests as req
-
-
-@dataclass
-class Config:
-    ip_address: str
-    username: str
-
 
 # Morse time units
 WPM = 20
@@ -26,6 +24,64 @@ M_DIT = M_UNIT_SECONDS
 M_DAHS = 3 * M_DIT
 M_LETTER_SPACE = 3 * M_DIT
 M_SPACE = 7 * M_DIT
+
+M = {
+    "A": ".-",
+    # Swedish
+    "Å": ".--.-",
+    "Ä": ".-.-",
+    "Ö": "---.",
+}
+
+
+@dataclass
+class Controller:
+    ip_address: str
+    username: str
+
+    @staticmethod
+    def from_json_path(path: str) -> Self | None:
+        if not os.path.exists(path):
+            print(f"ERROR: Did not find config file at {path}")
+            return None
+        with open(path, encoding="utf-8") as f:
+            j = f.read()
+            return Controller(**json.loads(j))
+
+    def save(self, path: str):
+        json_config = json.dumps(asdict(self), indent=4)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(json_config)
+
+    def base_url(self) -> str:
+        return f"http://{self.ip_address}/api/{self.username}"
+
+    def list_lamps(self):
+        res = req.get(f"{self.base_url()}/lights")
+        res.raise_for_status()
+        for n, lamp in res.json().items():
+            print(f'{n}: {lamp["name"]}')
+
+    def set_lamp(self, lamp_id: int, on: bool):
+        res = req.put(
+            f"{self.base_url()}/lights/{lamp_id}/state",
+            json={"on": on, "transitiontime": 2},
+        )
+        res.raise_for_status()
+        contains_hue_error(res.json(), context="set_lamp")
+
+    def blink(self, lamp_id: int, duration_s: float):
+        self.set_lamp(lamp_id, on=True)
+        sleep(duration_s)
+        self.set_lamp(lamp_id, on=False)
+
+
+def contains_hue_error(json: dict, context="unkown") -> bool:
+    """Checks JSON for a Hue error, prints it, and returns if an error was found."""
+    if len(json) > 0 and json[0].get("error") is not None:
+        print(f'ERROR: Bridge responded with {json[0]["error"]} (context: {context})')
+        return True
+    return False
 
 
 def default_config_path() -> str:
@@ -51,8 +107,7 @@ def handshake(ip: str) -> str | None:
 
     json = res.json()
 
-    if len(json) > 0 and json[0].get("error") is not None:
-        print(f'ERROR: During handshake, bridge responded with {json[0]["error"]}')
+    if contains_hue_error(json, context="handshake"):
         return None
     elif len(json) > 0:
         return json[0].get("success", {}).get("username", None)
@@ -64,19 +119,9 @@ def setup(ip: str, config_path: str) -> bool:
     username = handshake(ip)
     if username is None:
         return False
-    config = Config(ip_address=ip, username=username)
-    json_config = json.dumps(asdict(config), indent=4)
-    with open(config_path, "w", encoding="utf-8") as f:
-        f.write(json_config)
+    c = Controller(ip_address=ip, username=username)
+    c.save(config_path)
 
-
-M = {
-    "A": ".-",
-    # Swedish
-    "Å": ".--.-",
-    "Ä": ".-.-",
-    "Ö": "---.",
-}
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -139,3 +184,15 @@ if __name__ == "__main__":
 
     if args.setup is not None:
         setup(args.setup, args.output)
+        sys.exit(0)
+
+    c = Controller.from_json_path(args.config_file)
+    if c is None:
+        sys.exit(1)
+
+    if args.list:
+        c.list_lamps()
+        sys.exit(0)
+
+    if args.text is not None and args.id is not None:
+        c.blink(args.id, M_DIT)
