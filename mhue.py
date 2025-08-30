@@ -86,7 +86,7 @@ class Speed:
         return self._repeat_pause
 
 
-DEFAULT_SPEED = Speed(20)
+DEFAULT_SPEED = Speed(15)
 
 
 M = {
@@ -154,21 +154,26 @@ M = {
 }
 
 
-def translate(msg: str) -> str:
+def translate(msg: str) -> list[list[list[Literal[".", "-"]]]]:
     """Translates a message to Morse code.
 
+    The result is a list of words, which in turn is a list of characters, which in turn
+    is a list of dots and dashes.
+
     >>> translate('sos')
-    ['...---...']
-    >>> translate('hello world')
-    ['......-...-..---', '.-----.-..-..-..']
+    [['...', '---', '...']]
+    >>> translate('H i?')
+    [['....'], ['..', '..--..']]
     """
     msg = msg.upper()
     words = msg.split()
     morse_words = []
     for word in words:
-        morse_word = ""
-        for c in word:
-            morse_word += M.get(c, "")
+        morse_word = []
+        for char in word:
+            dots_dashes = M.get(char)
+            if dots_dashes is not None:
+                morse_word += [dots_dashes]
         morse_words.append(morse_word)
     return morse_words
 
@@ -217,14 +222,19 @@ class Controller:
     def blink_morse_word(
         self,
         lamp_id: int,
-        morse_word: list[Literal[".", "-"]],
+        morse_word: list[list[Literal[".", "-"]]],
         speed: Speed = DEFAULT_SPEED,
     ):
-        for i, c in enumerate(morse_word):
-            if c == ".":
-                self.blink(lamp_id, speed.dot())
-            elif c == "-":
-                self.blink(lamp_id, speed.dash())
+        for i, char in enumerate(morse_word):
+            for j, b in enumerate(char):
+                if b == ".":
+                    self.blink(lamp_id, speed.dot())
+                elif b == "-":
+                    self.blink(lamp_id, speed.dash())
+                # All except last one
+                if j < len(morse_word) - 1:
+                    sleep(speed.dot())
+
             # All except last one
             if i < len(morse_word) - 1:
                 sleep(speed.letter_space())
@@ -232,7 +242,7 @@ class Controller:
     def blink_morse_message(
         self,
         lamp_id: int,
-        morse_msg: list[list[Literal[".", "-"]]],
+        morse_msg: list[list[list[Literal[".", "-"]]]],
         speed: Speed = DEFAULT_SPEED,
     ):
         """Prints a Morse message, divided into words (or special characters)."""
@@ -373,8 +383,8 @@ if __name__ == "__main__":
         nargs="?",
         type=int,
         metavar="N",
-        help="WPM to use. Good range is 10-25, then we're speeding (default: 20)",
-        default=20,
+        help="WPM to use. Good range is 10-25, then we're speeding (default: 15)",
+        default=15,
     )
 
     args = parser.parse_args()
