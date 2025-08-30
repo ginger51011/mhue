@@ -4,13 +4,28 @@
 
 Based on <https://www.burgestrand.se/hue-api> (a bit outdated though).
 
-By Emil Jonathan Eriksson <github.com/ginger51011>
+Philips Hue is a copyright of Signify Holding. That corporation was in no way associated with this script,
+or me.
+
+Copyright 2025 Emil Jonathan Eriksson <github.com/ginger51011>
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with this program.
+If not, see <https://www.gnu.org/licenses/>.
 """
 
 import argparse
 import json
 import os
 import sys
+import textwrap
 from dataclasses import asdict, dataclass
 from time import sleep
 from typing import Literal, Self
@@ -101,10 +116,6 @@ M = {
     "X": "-..-",
     "Y": "-.--",
     "Z": "--..",
-    # Swedish
-    "Å": ".--.-",
-    "Ä": ".-.-",
-    "Ö": "---.",
     # Numbers
     "1": ".----",
     "2": "..---",
@@ -116,10 +127,21 @@ M = {
     "8": "---..",
     "9": "----.",
     "0": "-----",
+    # Swedish
+    "Å": ".--.-",
+    "Ä": ".-.-",
+    "Ö": "---.",
 }
 
 
 def translate(msg: str) -> str:
+    """Translates a message to Morse code.
+
+    >>> translate('sos')
+    ['...---...']
+    >>> translate('hello world')
+    ['......-...-..---', '.-----.-..-..-..']
+    """
     msg = msg.upper()
     words = msg.split()
     morse_words = []
@@ -219,17 +241,15 @@ def default_config_path() -> str:
 
 
 def handshake(ip: str) -> str | None:
+    input("Press the button on your Hue Bridge now; press <Enter> when done")
+
     res = req.post(
         f"http://{ip}/api",
         json={
             "devicetype": "mhue client",
         },
     )
-
-    input("Press the button on your Hue Bridge now; press <Enter> when done")
-
     res.raise_for_status()
-
     json = res.json()
 
     if contains_hue_error(json, context="handshake"):
@@ -251,7 +271,14 @@ def setup(ip: str, config_path: str) -> bool:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         prog="mhue",
-        description="Sends Morse code messages using your Philips Hue lamps",
+        description=textwrap.dedent(
+            """\
+            Sends Morse code messages using your Philips Hue lamps.
+
+            By Emil Jonathan Eriksson <github.com/ginger51011>, licensed under GPL-3.0-or-later
+            """
+        ),
+        formatter_class=argparse.RawTextHelpFormatter,
         add_help=True,
     )
     parser.add_argument(
@@ -260,7 +287,12 @@ if __name__ == "__main__":
         nargs="?",
         type=str,
         metavar="IP",
-        help="Setup an application with the provided Hue Bridge IP address and saves a configuration (see --output)",
+        help=textwrap.dedent(
+            """\
+            Setup an application with the provided Hue Bridge IP address
+            and saves a configuration (see --output)"
+            """
+        ),
     )
     parser.add_argument(
         "-o",
@@ -319,7 +351,7 @@ if __name__ == "__main__":
         nargs="?",
         type=int,
         metavar="N",
-        help="Approx WPM to send using",
+        help="WPM to use. Good range is 10-25, then we're speeding (default: 20)",
         default=20,
     )
 
