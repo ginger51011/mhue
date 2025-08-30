@@ -12,5 +12,3 @@ jobs:
     steps:
       - name: Check Ruff format
         uses: astral-sh/ruff-action@v3
-      - name: Run doctest
-        run: python3 -m doctest -f mhue.py

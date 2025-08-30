@@ -7,7 +7,7 @@ Based on <https://www.burgestrand.se/hue-api> (a bit outdated though).
 Philips Hue is a copyright of Signify Holding. That corporation was in no way associated with this script,
 or me.
 
-Copyright 2025 Emil Jonathan Eriksson <github.com/ginger51011>
+Copyright 2025 Emil Jonathan Eriksson <https://github.com/ginger51011>
 
 This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -295,7 +295,9 @@ if __name__ == "__main__":
             """\
             Sends Morse code messages using your Philips Hue lamps.
 
-            By Emil Jonathan Eriksson <github.com/ginger51011>, licensed under GPL-3.0-or-later
+            By Emil Jonathan Eriksson <https://github.com/ginger51011>, licensed under GPL-3.0-or-later.
+
+            Submit a PR at <https://github.com/ginger51011/mhue>!
             """
         ),
         formatter_class=argparse.RawTextHelpFormatter,
