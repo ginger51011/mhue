@@ -18,6 +18,11 @@ python3 mhue.py --id 1 --text 'hello world' --repeat 5 --wpm 15
 
 You could also just use `./mhue.py` and trust in the shebang...
 
+## Warning
+
+This program turns your lights into flashing lights. If you have a medical
+condition that makes you sensitive to flashing lights, __do not use this__.
+
 [^1]: I'm in no way associated with Philips Hue, this was based on
 [public knowledge of their API](https://www.burgestrand.se/hue-api)_
 [^2]: Ok you need a somewhat modern Python

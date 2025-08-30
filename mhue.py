@@ -209,7 +209,7 @@ class Controller:
     def set_lamp(self, lamp_id: int, on: bool):
         res = req.put(
             f"{self.base_url()}/lights/{lamp_id}/state",
-            json={"on": on, "transitiontime": 1},
+            json={"on": on, "transitiontime": 0},
         )
         res.raise_for_status()
         contains_hue_error(res.json(), context="set_lamp")
@@ -308,6 +308,8 @@ if __name__ == "__main__":
             By Emil Jonathan Eriksson <https://github.com/ginger51011>, licensed under GPL-3.0-or-later.
 
             Submit a PR at <https://github.com/ginger51011/mhue>!
+
+            WARNING: Do not use if you are sensitive to flashing lights!
             """
         ),
         formatter_class=argparse.RawTextHelpFormatter,
