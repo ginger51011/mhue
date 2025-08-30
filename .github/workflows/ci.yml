@@ -6,7 +6,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  Python checks:
+  python-checks:
+    name: Python Checks
     runs-on: ubuntu-latest
     steps:
       - name: Check Ruff format
