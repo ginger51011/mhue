@@ -16,4 +16,4 @@ select = [
 ignore = ["F401"]
 
 [format]
-quote-style = "single"
+quote-style = "double"
