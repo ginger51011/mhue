@@ -573,7 +573,8 @@ if __name__ == "__main__":
                 # Always turn off; first part of Morse will turn on as well
                 desired_state.on = False
                 lamp.set_state(desired_state)
-                sleep(STATE_CHANGE_SECONDS)
+                # Give extra time, transition is long
+                sleep(STATE_CHANGE_SECONDS * 2)
             else:
                 lamp.set_on(False)
                 sleep(STATE_CHANGE_SECONDS)
