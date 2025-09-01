@@ -90,6 +90,9 @@ class Speed:
 
 DEFAULT_SPEED = Speed(15)
 
+# Changing states too quickly breaks lamps
+STATE_CHANGE_SECONDS = 1
+
 
 M = {
     "A": ".-",
@@ -297,7 +300,7 @@ class Lamp:
         """Set the current state of the lamp"""
         res = S.put(
             f"{self.base_url()}/state",
-            json={**asdict(state), "transitiontime": 10},
+            json={**asdict(state), "transitiontime": STATE_CHANGE_SECONDS * 10},
         )
         res.raise_for_status()
         contains_hue_error(res.json(), context="set_lamp")
@@ -403,7 +406,6 @@ if __name__ == "__main__":
             """\
             Sends Morse code messages using your Philips Hue lamps.
 
-            You can set colors using either bri/hue/sat, xy, or ct (white color temp.).
             The lamp will return to its original state upon completion.
 
             By Emil Jonathan Eriksson <https://github.com/ginger51011>, licensed under GPL-3.0-or-later.
@@ -489,9 +491,7 @@ if __name__ == "__main__":
         help="WPM to use. Good range is 10-25, then we're speeding (default: 15)",
         default=15,
     )
-
-    bri_hue_sat_group = parser.add_argument_group()
-    bri_hue_sat_group.add_argument(
+    parser.add_argument(
         "-b",
         "--brightness",
         nargs="?",
@@ -499,7 +499,7 @@ if __name__ == "__main__":
         metavar="N",
         help="Brightness to use, 0-254",
     )
-    bri_hue_sat_group.add_argument(
+    parser.add_argument(
         "-H",
         "--hue",
         nargs="?",
@@ -507,7 +507,7 @@ if __name__ == "__main__":
         metavar="N",
         help="Hue to use, 0-65535",
     )
-    bri_hue_sat_group.add_argument(
+    parser.add_argument(
         "-S",
         "--saturation",
         nargs="?",
@@ -515,9 +515,7 @@ if __name__ == "__main__":
         metavar="N",
         help="Saturation to use, 0-254",
     )
-
-    colormode_group = parser.add_mutually_exclusive_group(required=False)
-    colormode_group.add_argument(
+    parser.add_argument(
         "-x",
         "--xy",
         nargs="*",
@@ -525,8 +523,7 @@ if __name__ == "__main__":
         metavar="XY",
         help="Color as array of xy-coordinates (0-1)",
     )
-
-    colormode_group.add_argument(
+    parser.add_argument(
         "-T",
         "--temperature",
         nargs="?",
@@ -536,14 +533,6 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-
-    # xy and temp in mutually exclusive group
-    bri_hue_sat_group_used = any([args.brightness, args.hue, args.saturation])
-    if (args.xy and bri_hue_sat_group_used) or (
-        args.temperature and bri_hue_sat_group_used
-    ):
-        eprint("You must either use bri/hue/sat, xy, or temperature")
-        sys.exit(1)
 
     if args.setup is not None:
         setup(args.setup, args.output)
@@ -572,7 +561,7 @@ if __name__ == "__main__":
                 "bri": args.brightness,
                 "hue": args.hue,
                 "sat": args.saturation,
-                "xy": args.xy if args.xy is not None and len(args.xy) == 2 else None,
+                "xy": args.xy,
                 "ct": args.temperature,
             }
             desired_state = replace(
@@ -584,7 +573,10 @@ if __name__ == "__main__":
                 # Always turn off; first part of Morse will turn on as well
                 desired_state.on = False
                 lamp.set_state(desired_state)
-                sleep(speed.dash())
+                sleep(STATE_CHANGE_SECONDS)
+            else:
+                lamp.set_on(False)
+                sleep(STATE_CHANGE_SECONDS)
 
             for _ in range(args.repeat):
                 lamp.blink_morse_message(text, speed=speed)
