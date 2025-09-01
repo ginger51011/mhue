@@ -25,4 +25,5 @@ condition that makes you sensitive to flashing lights, __do not use this__.
 
 [^1]: I'm in no way associated with Philips Hue, this was based on
 [public knowledge of their API](https://www.burgestrand.se/hue-api)_
-[^2]: Ok you need a somewhat modern Python
+[^2]: Ok you need a somewhat modern Python and requests, which most people have
+    pre-installed

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Dependency-free Python script to blink your Philips Hue lamps with Morse code.
+"""Python script to blink your Philips Hue lamps with Morse code. Requires requests.
 
 Based on <https://www.burgestrand.se/hue-api> (a bit outdated though).
 
@@ -26,11 +26,13 @@ import json
 import os
 import sys
 import textwrap
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from time import sleep
 from typing import Literal, Self
 
-import requests as req
+import requests
+
+S = requests.Session()
 
 
 def eprint(*args, **kwargs):
@@ -87,6 +89,9 @@ class Speed:
 
 
 DEFAULT_SPEED = Speed(15)
+
+# Changing states too quickly breaks lamps
+STATE_CHANGE_SECONDS = 1
 
 
 M = {
@@ -178,8 +183,12 @@ def translate(msg: str) -> list[list[list[Literal[".", "-"]]]]:
     return morse_words
 
 
+def clamp(min_x: int, max_x: int, x: int) -> int:
+    return max(min(x, max_x), min_x)
+
+
 @dataclass
-class Controller:
+class Config:
     ip_address: str
     username: str
 
@@ -190,7 +199,7 @@ class Controller:
             return None
         with open(path, encoding="utf-8") as f:
             j = f.read()
-            return Controller(**json.loads(j))
+            return Config(**json.loads(j))
 
     def save(self, path: str):
         json_config = json.dumps(asdict(self), indent=4)
@@ -198,39 +207,132 @@ class Controller:
             f.write(json_config)
 
     def base_url(self) -> str:
+        """Get the base URL for this username and IP (no trailing `/`)"""
         return f"http://{self.ip_address}/api/{self.username}"
 
     def list_lamps(self):
-        res = req.get(f"{self.base_url()}/lights")
+        res = S.get(f"{self.base_url()}/lights")
         res.raise_for_status()
         for n, lamp in res.json().items():
             print(f"{n}: {lamp['name']}")
 
-    def set_lamp(self, lamp_id: int, on: bool):
-        res = req.put(
-            f"{self.base_url()}/lights/{lamp_id}/state",
+
+@dataclass
+class LampState:
+    on: bool
+    bri: int
+    hue: int
+    sat: int
+    xy: list[float]
+    ct: int
+
+    def __init__(
+        self,
+        on: bool,
+        bri: int,
+        hue: int,
+        sat: int,
+        xy: list[float],
+        ct: int,
+        **kwargs,
+    ):
+        self.on = on
+
+        # Only one colormode can be used
+        # colormode 1
+        self.bri = clamp(0, 254, bri)
+        self.hue = clamp(0, 65535, hue)
+        self.sat = clamp(0, 254, sat)
+
+        # colormode xy
+        self.xy = list(map(lambda x: clamp(0, 1, x), xy[:2]))
+
+        # colormode ct
+        self.ct = clamp(154, 500, ct)
+
+
+class Lamp:
+    def __init__(self, config: Config, id: int):
+        self._config = config
+        self._id = id
+        self._initial_state = None
+
+    def __enter__(self):
+        # Ensure we save the lamps initial state to be able to reset it
+        self._initial_state = self.current_state()
+        return self
+
+    def __exit__(self, _exc_type, _exc_value, _traceback):
+        # Reset to initial state
+        if self._initial_state is not None:
+            # OK so a bit messy but: If a Hue light changes color and is turned
+            # on in the same command, it will do a nasty flash. But if you don't do
+            # it the color wont change...
+
+            # Avoid changing state if we are at desired
+            current_state = self.current_state()
+            currently_on = current_state.on
+            current_state.on = self._initial_state.on
+
+            if current_state != self._initial_state:
+                self.set_state(state=self._initial_state)
+            elif not currently_on and self._initial_state.on:
+                # Should turn on
+                self.set_on(True)
+            elif currently_on and not self._initial_state.on:
+                # Should turn off
+                self.set_on(False)
+
+    def initial_state(self) -> LampState | None:
+        return self._initial_state
+
+    def current_state(self) -> LampState:
+        res = S.get(self.base_url())
+        json = res.json()
+        contains_hue_error(json, context="get_initial_lamp_state")
+        return LampState(**(json.get("state", {})))
+
+    def base_url(self) -> str:
+        """Get the base URL for this username and IP (no trailing `/`)"""
+        return f"{self._config.base_url()}/lights/{self._id}"
+
+    def set_state(self, state: LampState):
+        """Set the current state of the lamp"""
+        res = S.put(
+            f"{self.base_url()}/state",
+            json={**asdict(state), "transitiontime": STATE_CHANGE_SECONDS * 10},
+        )
+        res.raise_for_status()
+        contains_hue_error(res.json(), context="set_lamp")
+
+    def set_on(self, on):
+        """Sets a lamp to `on`.
+
+        Use `set_state` to change color and the like
+        """
+        res = S.put(
+            f"{self.base_url()}/state",
             json={"on": on, "transitiontime": 0},
         )
         res.raise_for_status()
         contains_hue_error(res.json(), context="set_lamp")
 
-    def blink(self, lamp_id: int, duration_s: float):
-        self.set_lamp(lamp_id, on=True)
+    def blink(self, duration_s: float):
+        self.set_on(on=True)
         sleep(duration_s)
-        self.set_lamp(lamp_id, on=False)
+        self.set_on(on=False)
 
     def blink_morse_word(
         self,
-        lamp_id: int,
         morse_word: list[list[Literal[".", "-"]]],
         speed: Speed = DEFAULT_SPEED,
     ):
         for i, char in enumerate(morse_word):
             for j, b in enumerate(char):
                 if b == ".":
-                    self.blink(lamp_id, speed.dot())
+                    self.blink(speed.dot())
                 elif b == "-":
-                    self.blink(lamp_id, speed.dash())
+                    self.blink(speed.dash())
                 # All except last one
                 if j < len(morse_word) - 1:
                     sleep(speed.dot())
@@ -241,13 +343,12 @@ class Controller:
 
     def blink_morse_message(
         self,
-        lamp_id: int,
         morse_msg: list[list[list[Literal[".", "-"]]]],
         speed: Speed = DEFAULT_SPEED,
     ):
         """Prints a Morse message, divided into words (or special characters)."""
         for i, word in enumerate(morse_msg):
-            self.blink_morse_word(lamp_id, word, speed)
+            self.blink_morse_word(word, speed)
             # All except last one
             if i < len(morse_msg) - 1:
                 sleep(speed.space())
@@ -255,7 +356,7 @@ class Controller:
 
 def contains_hue_error(json: dict, context="unkown") -> bool:
     """Checks JSON for a Hue error, prints it, and returns if an error was found."""
-    if len(json) > 0 and json[0].get("error") is not None:
+    if isinstance(json, list) and len(json) > 0 and json[0].get("error") is not None:
         eprint(f"ERROR: Bridge responded with {json[0]['error']} (context: {context})")
         return True
     return False
@@ -273,7 +374,7 @@ def default_config_path() -> str:
 def handshake(ip: str) -> str | None:
     input("Press the button on your Hue Bridge now; press <Enter> when done")
 
-    res = req.post(
+    res = S.post(
         f"http://{ip}/api",
         json={
             "devicetype": "mhue client",
@@ -294,7 +395,7 @@ def setup(ip: str, config_path: str) -> bool:
     username = handshake(ip)
     if username is None:
         return False
-    c = Controller(ip_address=ip, username=username)
+    c = Config(ip_address=ip, username=username)
     c.save(config_path)
 
 
@@ -304,6 +405,8 @@ if __name__ == "__main__":
         description=textwrap.dedent(
             """\
             Sends Morse code messages using your Philips Hue lamps.
+
+            The lamp will return to its original state upon completion.
 
             By Emil Jonathan Eriksson <https://github.com/ginger51011>, licensed under GPL-3.0-or-later.
 
@@ -388,6 +491,46 @@ if __name__ == "__main__":
         help="WPM to use. Good range is 10-25, then we're speeding (default: 15)",
         default=15,
     )
+    parser.add_argument(
+        "-b",
+        "--brightness",
+        nargs="?",
+        type=int,
+        metavar="N",
+        help="Brightness to use, 0-254",
+    )
+    parser.add_argument(
+        "-H",
+        "--hue",
+        nargs="?",
+        type=int,
+        metavar="N",
+        help="Hue to use, 0-65535",
+    )
+    parser.add_argument(
+        "-S",
+        "--saturation",
+        nargs="?",
+        type=int,
+        metavar="N",
+        help="Saturation to use, 0-254",
+    )
+    parser.add_argument(
+        "-x",
+        "--xy",
+        nargs="*",
+        type=float,
+        metavar="XY",
+        help="Color as array of xy-coordinates (0-1)",
+    )
+    parser.add_argument(
+        "-T",
+        "--temperature",
+        nargs="?",
+        type=int,
+        metavar="N",
+        help="White color temperature, 154 (cold) - 500 (warm)",
+    )
 
     args = parser.parse_args()
 
@@ -395,22 +538,48 @@ if __name__ == "__main__":
         setup(args.setup, args.output)
         sys.exit(0)
 
-    c = Controller.from_json_path(args.config_file)
+    c = Config.from_json_path(args.config_file)
     if c is None:
         sys.exit(1)
+
+    if args.list:
+        c.list_lamps()
+        sys.exit(0)
 
     if args.wpm <= 0:
         eprint("WPM must be positive")
         sys.exit(1)
     speed = Speed(args.wpm)
 
-    if args.list:
-        c.list_lamps()
-        sys.exit(0)
-
     if args.text is not None and args.id is not None:
-        for i in range(args.repeat):
-            c.blink_morse_message(args.id, translate(args.text), speed=speed)
-            # All but last time
-            if i < args.repeat - 1:
+        text = translate(args.text)
+        with Lamp(config=c, id=args.id) as lamp:
+            # We use the initial state of the lamp as default values, but use
+            # command line values if passed
+            initial_state = lamp.initial_state()
+            passed_values = {
+                "bri": args.brightness,
+                "hue": args.hue,
+                "sat": args.saturation,
+                "xy": args.xy,
+                "ct": args.temperature,
+            }
+            desired_state = replace(
+                initial_state,
+                **{k: v for k, v in passed_values.items() if v is not None},
+            )
+
+            if desired_state != initial_state:
+                # Always turn off; first part of Morse will turn on as well
+                desired_state.on = False
+                lamp.set_state(desired_state)
+                # Give extra time, transition is long
+                sleep(STATE_CHANGE_SECONDS * 2)
+            else:
+                lamp.set_on(False)
+                sleep(STATE_CHANGE_SECONDS)
+
+            for _ in range(args.repeat):
+                lamp.blink_morse_message(text, speed=speed)
+                # All, including last, to return to original state (__exit__) smoothly
                 sleep(speed.repeat_pause())
