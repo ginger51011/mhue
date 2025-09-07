@@ -221,34 +221,36 @@ class Config:
 class LampState:
     on: bool
     bri: int
-    hue: int
-    sat: int
-    xy: list[float]
     ct: int
+
+    # These are only available on color lamps
+    hue: int | None
+    sat: int | None
+    xy: list[float] | None
 
     def __init__(
         self,
         on: bool,
         bri: int,
-        hue: int,
-        sat: int,
-        xy: list[float],
         ct: int,
+        hue: int | None = None,
+        sat: int | None = None,
+        xy: list[float] | None = None,
         **kwargs,
     ):
         self.on = on
 
-        # Only one colormode can be used
+        self.ct = clamp(154, 500, ct)
+
         # colormode 1
-        self.bri = clamp(0, 254, bri)
-        self.hue = clamp(0, 65535, hue)
-        self.sat = clamp(0, 254, sat)
+        self.bri = clamp(0, 254, bri) if bri is not None else None
+        self.hue = clamp(0, 65535, hue) if hue is not None else None
+        self.sat = clamp(0, 254, sat) if sat is not None else None
 
         # colormode xy
-        self.xy = list(map(lambda x: clamp(0, 1, x), xy[:2]))
-
-        # colormode ct
-        self.ct = clamp(154, 500, ct)
+        self.xy = (
+            list(map(lambda x: clamp(0, 1, x), xy[:2])) if xy is not None else None
+        )
 
 
 class Lamp:
